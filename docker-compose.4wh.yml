@@ -1,0 +1,137 @@
+# 4 bodegas totalmente independientes: cada una con su API+front (Flask), su
+# PostgreSQL, su volumen y su red. No comparten nada.
+#
+#   docker compose -f docker-compose.4wh.yml up -d --build
+#   WH-001 -> http://localhost:8001   (DB: localhost:5441)
+#   WH-002 -> http://localhost:8002   (DB: localhost:5442)
+#   WH-003 -> http://localhost:8003   (DB: localhost:5443)
+#   WH-004 -> http://localhost:8004   (DB: localhost:5444)
+
+x-db: &db
+  image: postgres:16-alpine
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U warehouse -d warehouse"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+
+x-api: &api
+  build: .
+  restart: unless-stopped
+
+services:
+  db-wh1:
+    <<: *db
+    container_name: wh001-db
+    environment:
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: warehouse
+    volumes:
+      - pgdata-wh1:/var/lib/postgresql/data
+    ports:
+      - "5441:5432"
+    networks: [net-wh1]
+
+  api-wh1:
+    <<: *api
+    container_name: wh001-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://warehouse:warehouse@db-wh1:5432/warehouse
+      WAREHOUSE_ID: WH-001
+    ports:
+      - "8001:8000"
+    depends_on:
+      db-wh1:
+        condition: service_healthy
+    networks: [net-wh1]
+
+  db-wh2:
+    <<: *db
+    container_name: wh002-db
+    environment:
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: warehouse
+    volumes:
+      - pgdata-wh2:/var/lib/postgresql/data
+    ports:
+      - "5442:5432"
+    networks: [net-wh2]
+
+  api-wh2:
+    <<: *api
+    container_name: wh002-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://warehouse:warehouse@db-wh2:5432/warehouse
+      WAREHOUSE_ID: WH-002
+    ports:
+      - "8002:8000"
+    depends_on:
+      db-wh2:
+        condition: service_healthy
+    networks: [net-wh2]
+
+  db-wh3:
+    <<: *db
+    container_name: wh003-db
+    environment:
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: warehouse
+    volumes:
+      - pgdata-wh3:/var/lib/postgresql/data
+    ports:
+      - "5443:5432"
+    networks: [net-wh3]
+
+  api-wh3:
+    <<: *api
+    container_name: wh003-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://warehouse:warehouse@db-wh3:5432/warehouse
+      WAREHOUSE_ID: WH-003
+    ports:
+      - "8003:8000"
+    depends_on:
+      db-wh3:
+        condition: service_healthy
+    networks: [net-wh3]
+
+  db-wh4:
+    <<: *db
+    container_name: wh004-db
+    environment:
+      POSTGRES_USER: warehouse
+      POSTGRES_PASSWORD: warehouse
+      POSTGRES_DB: warehouse
+    volumes:
+      - pgdata-wh4:/var/lib/postgresql/data
+    ports:
+      - "5444:5432"
+    networks: [net-wh4]
+
+  api-wh4:
+    <<: *api
+    container_name: wh004-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://warehouse:warehouse@db-wh4:5432/warehouse
+      WAREHOUSE_ID: WH-004
+    ports:
+      - "8004:8000"
+    depends_on:
+      db-wh4:
+        condition: service_healthy
+    networks: [net-wh4]
+
+volumes:
+  pgdata-wh1:
+  pgdata-wh2:
+  pgdata-wh3:
+  pgdata-wh4:
+
+networks:
+  net-wh1:
+  net-wh2:
+  net-wh3:
+  net-wh4:

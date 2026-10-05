@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bodega {{ warehouse_id }}</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem;color:#222}
+  h1{margin-bottom:0} .sub{color:#666;margin-top:.2rem}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem} @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  fieldset{border:1px solid #ccc;border-radius:8px;padding:1rem}
+  input,select,button{padding:.4rem;margin:.2rem 0;width:100%;box-sizing:border-box}
+  button{cursor:pointer;background:#2563eb;color:#fff;border:0;border-radius:6px}
+  table{width:100%;border-collapse:collapse;margin-top:1rem} td,th{border-bottom:1px solid #eee;padding:.4rem;text-align:left}
+  #msg{padding:.6rem;border-radius:6px;margin:1rem 0;display:none} .ok{background:#dcfce7} .err{background:#fee2e2}
+  .small{font-size:.8rem;color:#777}
+</style>
+</head>
+<body>
+<h1>Bodega {{ warehouse_id }}</h1>
+<p class="sub">Panel de inventario · <a href="/health">/health</a></p>
+<div id="msg"></div>
+
+<div class="grid">
+  <fieldset><legend>Nuevo producto</legend>
+    <form id="fProduct">
+      <input name="sku" placeholder="SKU" required>
+      <input name="name" placeholder="Nombre" required>
+      <input name="category" placeholder="Categoría (opcional)">
+      <button>Crear producto</button>
+    </form>
+  </fieldset>
+  <fieldset><legend>Registrar movimiento</legend>
+    <form id="fMove">
+      <select name="product_id" id="selProduct" required></select>
+      <select name="type">
+        <option>RECEIPT</option><option>SHIPMENT</option><option>ADJUSTMENT</option><option>RETURN</option>
+      </select>
+      <input name="quantity" type="number" placeholder="Cantidad (ADJUSTMENT admite negativos)" required>
+      <input name="reference" placeholder="Referencia (opcional)">
+      <button>Registrar</button>
+    </form>
+  </fieldset>
+</div>
+
+<h2>Inventario</h2>
+<table><thead><tr><th>SKU</th><th>Nombre</th><th>Stock</th><th>Reservado</th><th>Disponible</th><th></th></tr></thead>
+<tbody id="rows"></tbody></table>
+
+<h2>Movimientos <span class="small" id="kardexFor"></span></h2>
+<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Referencia</th></tr></thead>
+<tbody id="kardex"></tbody></table>
+
+<script>
+const $ = s => document.querySelector(s);
+function msg(text, ok){const m=$('#msg');m.textContent=text;m.className=ok?'ok':'err';m.style.display='block';}
+function errText(d){return typeof d==='string'?d:d.map(e=>(e.loc||[]).join('.')+': '+e.msg).join('; ');}
+async function api(path, opts){
+  const r = await fetch(path, opts && {headers:{'Content-Type':'application/json'}, ...opts});
+  const body = r.status===204 ? null : await r.json();
+  if(!r.ok) throw new Error(errText(body.detail));
+  return body;
+}
+async function refresh(){
+  const products = await api('/products');
+  $('#selProduct').innerHTML = products.map(p=>`<option value="${p.id}">${p.sku} — ${p.name}</option>`).join('');
+  const invs = await Promise.all(products.map(p=>api('/inventory/'+p.id)));
+  $('#rows').innerHTML = products.map((p,i)=>`<tr><td>${p.sku}</td><td>${p.name}</td>
+    <td>${invs[i].quantity}</td><td>${invs[i].reserved_quantity}</td><td>${invs[i].available}</td>
+    <td><button onclick="showKardex('${p.id}','${p.sku}')">Kardex</button></td></tr>`).join('');
+}
+async function showKardex(id, sku){
+  const ms = await api(`/inventory/${id}/movements`);
+  $('#kardexFor').textContent = '— '+sku;
+  $('#kardex').innerHTML = ms.map(m=>`<tr><td>${new Date(m.created_at).toLocaleString()}</td><td>${m.type}</td><td>${m.quantity}</td><td>${m.reference||''}</td></tr>`).join('');
+}
+$('#fProduct').onsubmit = async e => {
+  e.preventDefault();
+  const f=Object.fromEntries(new FormData(e.target)); if(!f.category) delete f.category;
+  try{ await api('/products',{method:'POST',body:JSON.stringify(f)}); msg('Producto creado',true); e.target.reset(); refresh(); }
+  catch(x){ msg(x.message,false); }
+};
+$('#fMove').onsubmit = async e => {
+  e.preventDefault();
+  const f=Object.fromEntries(new FormData(e.target)); f.quantity=parseInt(f.quantity,10); if(!f.reference) f.reference=null;
+  try{ await api('/inventory/movements',{method:'POST',body:JSON.stringify(f)}); msg('Movimiento registrado',true); await refresh(); showKardex(f.product_id,''); }
+  catch(x){ msg(x.message,false); }
+};
+refresh().catch(x=>msg(x.message,false));
+</script>
+</body>
+</html>
